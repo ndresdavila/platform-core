@@ -30,7 +30,6 @@ type CustomerRepository interface {
 
 type EmployeeRepository interface {
 	GetByExternalID(ctx context.Context, tenantID uuid.UUID, externalID string) (*domain.Employee, error)
-	GetByEmail(ctx context.Context, tenantID uuid.UUID, email string) (*domain.Employee, error)
 	UpsertByExternalID(ctx context.Context, e *domain.Employee) error
 }
 

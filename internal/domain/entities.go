@@ -65,11 +65,9 @@ type BookingStatus string
 
 const (
 	BookingPending    BookingStatus = "PENDING"
-	BookingConfirmed  BookingStatus = "CONFIRMED"
 	BookingInProgress BookingStatus = "IN_PROGRESS"
 	BookingCompleted  BookingStatus = "COMPLETED"
 	BookingCancelled  BookingStatus = "CANCELLED"
-	BookingNoShow     BookingStatus = "NO_SHOW"
 )
 
 type OperativeStage string

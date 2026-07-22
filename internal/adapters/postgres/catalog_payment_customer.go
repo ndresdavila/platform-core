@@ -114,13 +114,6 @@ func (r *EmployeeRepo) GetByExternalID(ctx context.Context, tenantID uuid.UUID, 
 	return scanEmployee(row)
 }
 
-func (r *EmployeeRepo) GetByEmail(ctx context.Context, tenantID uuid.UUID, email string) (*domain.Employee, error) {
-	row := r.db.QueryRow(ctx, `
-		SELECT id, tenant_id, external_id, email, first_name, last_name, role, active, created_at, updated_at
-		FROM employees WHERE tenant_id=$1 AND lower(email)=lower($2)`, tenantID, email)
-	return scanEmployee(row)
-}
-
 func (r *EmployeeRepo) UpsertByExternalID(ctx context.Context, e *domain.Employee) error {
 	_, err := r.db.Exec(ctx, `
 		INSERT INTO employees (id, tenant_id, external_id, email, first_name, last_name, role, active, created_at, updated_at)
