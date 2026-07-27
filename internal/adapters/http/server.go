@@ -3,18 +3,14 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
-	"github.com/ndresdavila/platform-core/internal/application/booking"
-	"github.com/ndresdavila/platform-core/internal/application/catalog"
-	"github.com/ndresdavila/platform-core/internal/application/design"
 	"github.com/ndresdavila/platform-core/internal/application/identity"
-	"github.com/ndresdavila/platform-core/internal/application/payment"
+	"github.com/ndresdavila/platform-core/internal/application/invoice"
 	"github.com/ndresdavila/platform-core/internal/application/tenant"
 	"github.com/ndresdavila/platform-core/internal/domain"
 )
@@ -22,10 +18,7 @@ import (
 type Server struct {
 	Tenants  *tenant.Service
 	Identity *identity.Service
-	Bookings *booking.Service
-	Payments *payment.Service
-	Catalog  *catalog.Service
-	Designs  *design.Service
+	Invoices *invoice.Service
 }
 
 func (s *Server) Router() http.Handler {
@@ -41,40 +34,16 @@ func (s *Server) Router() http.Handler {
 		r.Get("/tenants/by-slug/{slug}", s.getTenantBySlug)
 
 		r.Route("/tenants/{tenantID}", func(r chi.Router) {
-			r.Get("/settings", s.getSettings)
-			r.Put("/settings", s.putSettings)
-
-			r.Post("/customers/upsert", s.upsertCustomer)
-			r.Get("/customers/by-external/{externalId}", s.getCustomerByExternal)
-			r.Get("/customers/{id}", s.getCustomer)
-			r.Patch("/customers/{id}/profile", s.updateCustomerProfile)
 			r.Post("/employees/upsert", s.upsertEmployee)
 
-			r.Get("/catalog/services", s.listServices)
-			r.Post("/catalog/services", s.createService)
-
-			r.Post("/bookings", s.createBooking)
-			r.Get("/bookings", s.listBookings)
-			r.Get("/bookings/{bookingID}", s.getBooking)
-			r.Post("/bookings/{bookingID}/cancel-customer", s.cancelBookingByCustomer)
-			r.Post("/bookings/{bookingID}/cancel-staff", s.cancelBookingByStaff)
-			r.Post("/bookings/{bookingID}/advance", s.advanceBooking)
-
-			r.Post("/payments", s.registerPayment)
-			r.Get("/payments", s.listPayments)
-			r.Get("/payments/{paymentID}", s.getPayment)
-			r.Post("/payments/{paymentID}/mark-paid", s.markPaid)
-			r.Post("/payments/{paymentID}/void", s.voidPayment)
-
-			r.Get("/bank-accounts", s.listBanks)
-			r.Post("/bank-accounts", s.createBank)
-
-			r.Post("/designs", s.createDesign)
-			r.Get("/designs/quota", s.designQuota)
-			r.Get("/designs", s.listDesigns)
-			r.Get("/designs/{id}", s.getDesign)
-			r.Post("/designs/{id}/complete", s.completeDesign)
-			r.Delete("/designs/{id}", s.deleteDesign)
+			r.Get("/persons", s.listPersons)
+			r.Post("/persons", s.createPerson)
+			r.Get("/products", s.listProducts)
+			r.Post("/products", s.createProduct)
+			r.Get("/invoices", s.listInvoices)
+			r.Post("/invoices", s.createInvoice)
+			r.Get("/invoices/{invoiceID}", s.getInvoice)
+			r.Post("/invoices/{invoiceID}/send-sri", s.sendInvoiceSRI)
 		})
 	})
 	return r
@@ -106,115 +75,6 @@ func (s *Server) getTenantBySlug(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, t)
 }
 
-func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := tenantID(w, r)
-	if !ok {
-		return
-	}
-	st, err := s.Identity.Settings(r.Context(), tenantID)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, st)
-}
-
-func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := tenantID(w, r)
-	if !ok {
-		return
-	}
-	var st domain.TenantSettings
-	if err := decodeJSON(r, &st); err != nil {
-		writeErr(w, err)
-		return
-	}
-	st.TenantID = tenantID
-	if err := s.Identity.UpsertSettings(r.Context(), &st); err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, &st)
-}
-
-func (s *Server) upsertCustomer(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := tenantID(w, r)
-	if !ok {
-		return
-	}
-	var body struct {
-		ExternalID string  `json:"externalId"`
-		Email      string  `json:"email"`
-		FirstName  string  `json:"firstName"`
-		LastName   string  `json:"lastName"`
-		Phone      string  `json:"phone"`
-		NationalID *string `json:"nationalId"`
-		Role       string  `json:"role"`
-	}
-	if err := decodeJSON(r, &body); err != nil {
-		writeErr(w, err)
-		return
-	}
-	c, err := s.Identity.UpsertCustomer(r.Context(), identity.UpsertCustomerInput{
-		TenantID: tenantID, ExternalID: body.ExternalID, Email: body.Email, FirstName: body.FirstName,
-		LastName: body.LastName, Phone: body.Phone, NationalID: body.NationalID, Role: body.Role,
-	})
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, c)
-}
-
-func (s *Server) getCustomer(w http.ResponseWriter, r *http.Request) {
-	tenantID, id, ok := tenantAndID(w, r, "id")
-	if !ok {
-		return
-	}
-	c, err := s.Identity.GetCustomer(r.Context(), tenantID, id)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, c)
-}
-
-func (s *Server) getCustomerByExternal(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := tenantID(w, r)
-	if !ok {
-		return
-	}
-	c, err := s.Identity.GetCustomerByExternal(r.Context(), tenantID, chi.URLParam(r, "externalId"))
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, c)
-}
-
-func (s *Server) updateCustomerProfile(w http.ResponseWriter, r *http.Request) {
-	tenantID, id, ok := tenantAndID(w, r, "id")
-	if !ok {
-		return
-	}
-	var body struct {
-		NationalID string `json:"nationalId"`
-		FirstName  string `json:"firstName"`
-		LastName   string `json:"lastName"`
-		Phone      string `json:"phone"`
-	}
-	if err := decodeJSON(r, &body); err != nil {
-		writeErr(w, err)
-		return
-	}
-	c, err := s.Identity.UpdateCustomerProfile(r.Context(), tenantID, id, body.NationalID, body.FirstName, body.LastName, body.Phone)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, c)
-}
-
 func (s *Server) upsertEmployee(w http.ResponseWriter, r *http.Request) {
 	tenantID, ok := tenantID(w, r)
 	if !ok {
@@ -241,225 +101,31 @@ func (s *Server) upsertEmployee(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, e)
 }
 
-func (s *Server) listServices(w http.ResponseWriter, r *http.Request) {
+func (s *Server) listPersons(w http.ResponseWriter, r *http.Request) {
 	tenantID, ok := tenantID(w, r)
 	if !ok {
 		return
 	}
-	items, err := s.Catalog.ListServices(r.Context(), tenantID, r.URL.Query().Get("active") != "false")
+	list, err := s.Invoices.ListPersons(r.Context(), tenantID, r.URL.Query().Get("q"))
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"services": items})
+	writeJSON(w, http.StatusOK, list)
 }
 
-func (s *Server) createService(w http.ResponseWriter, r *http.Request) {
+func (s *Server) createPerson(w http.ResponseWriter, r *http.Request) {
 	tenantID, ok := tenantID(w, r)
 	if !ok {
 		return
 	}
-	var body catalog.CreateServiceInput
+	var body invoice.CreatePersonInput
 	if err := decodeJSON(r, &body); err != nil {
 		writeErr(w, err)
 		return
 	}
 	body.TenantID = tenantID
-	svc, err := s.Catalog.CreateService(r.Context(), body)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, svc)
-}
-
-func (s *Server) createBooking(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := tenantID(w, r)
-	if !ok {
-		return
-	}
-	var body struct {
-		CustomerID string    `json:"customerId"`
-		ServiceID  string    `json:"serviceId"`
-		DesignID   *string   `json:"designId"`
-		StartsAt   time.Time `json:"startsAt"`
-		Notes      string    `json:"notes"`
-	}
-	if err := decodeJSON(r, &body); err != nil {
-		writeErr(w, err)
-		return
-	}
-	customerID, err := uuid.Parse(body.CustomerID)
-	if err != nil {
-		writeErr(w, domain.ErrValidation)
-		return
-	}
-	serviceID, err := uuid.Parse(body.ServiceID)
-	if err != nil {
-		writeErr(w, domain.ErrValidation)
-		return
-	}
-	var designID *uuid.UUID
-	if body.DesignID != nil && *body.DesignID != "" {
-		id, err := uuid.Parse(*body.DesignID)
-		if err != nil {
-			writeErr(w, domain.ErrValidation)
-			return
-		}
-		designID = &id
-	}
-	b, err := s.Bookings.Create(r.Context(), booking.CreateInput{
-		TenantID: tenantID, CustomerID: customerID, ServiceID: serviceID,
-		DesignID: designID, StartsAt: body.StartsAt, Notes: body.Notes,
-	})
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, b)
-}
-
-func (s *Server) listBookings(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := tenantID(w, r)
-	if !ok {
-		return
-	}
-	q := r.URL.Query()
-	if customerID := q.Get("customerId"); customerID != "" {
-		cid, err := uuid.Parse(customerID)
-		if err != nil {
-			writeErr(w, domain.ErrValidation)
-			return
-		}
-		items, err := s.Bookings.ListByCustomer(r.Context(), tenantID, cid)
-		if err != nil {
-			writeErr(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"bookings": items})
-		return
-	}
-	from, err1 := time.Parse(time.RFC3339, q.Get("from"))
-	to, err2 := time.Parse(time.RFC3339, q.Get("to"))
-	if err1 != nil || err2 != nil {
-		writeErr(w, domain.ErrValidation)
-		return
-	}
-	items, err := s.Bookings.ListByRange(r.Context(), tenantID, from, to)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"bookings": items})
-}
-
-func (s *Server) getBooking(w http.ResponseWriter, r *http.Request) {
-	tenantID, bookingID, ok := tenantAndID(w, r, "bookingID")
-	if !ok {
-		return
-	}
-	b, err := s.Bookings.Get(r.Context(), tenantID, bookingID)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, b)
-}
-
-func (s *Server) cancelBookingByCustomer(w http.ResponseWriter, r *http.Request) {
-	tenantID, bookingID, ok := tenantAndID(w, r, "bookingID")
-	if !ok {
-		return
-	}
-	b, err := s.Bookings.CancelByCustomer(r.Context(), tenantID, bookingID)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, b)
-}
-
-func (s *Server) cancelBookingByStaff(w http.ResponseWriter, r *http.Request) {
-	tenantID, bookingID, ok := tenantAndID(w, r, "bookingID")
-	if !ok {
-		return
-	}
-	b, err := s.Bookings.CancelByStaff(r.Context(), tenantID, bookingID)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, b)
-}
-
-func (s *Server) advanceBooking(w http.ResponseWriter, r *http.Request) {
-	tenantID, bookingID, ok := tenantAndID(w, r, "bookingID")
-	if !ok {
-		return
-	}
-	var body struct {
-		To *domain.OperativeStage `json:"to"`
-	}
-	if err := decodeJSON(r, &body); err != nil && !errors.Is(err, io.EOF) {
-		writeErr(w, err)
-		return
-	}
-	b, err := s.Bookings.Advance(r.Context(), tenantID, bookingID, body.To)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, b)
-}
-
-func (s *Server) registerPayment(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := tenantID(w, r)
-	if !ok {
-		return
-	}
-	var body struct {
-		CustomerID    string  `json:"customerId"`
-		BookingID     *string `json:"bookingId"`
-		BankAccountID *string `json:"bankAccountId"`
-		BankCode      string  `json:"bankCode"`
-		Method        string  `json:"method"`
-		AmountCents   int     `json:"amountCents"`
-		Currency      string  `json:"currency"`
-		Reference     string  `json:"reference"`
-		ReceiptURL    string  `json:"receiptUrl"`
-	}
-	if err := decodeJSON(r, &body); err != nil {
-		writeErr(w, err)
-		return
-	}
-	customerID, err := uuid.Parse(body.CustomerID)
-	if err != nil {
-		writeErr(w, domain.ErrValidation)
-		return
-	}
-	var bookingID *uuid.UUID
-	if body.BookingID != nil && *body.BookingID != "" {
-		id, err := uuid.Parse(*body.BookingID)
-		if err != nil {
-			writeErr(w, domain.ErrValidation)
-			return
-		}
-		bookingID = &id
-	}
-	var bankAccountID *uuid.UUID
-	if body.BankAccountID != nil && *body.BankAccountID != "" {
-		id, err := uuid.Parse(*body.BankAccountID)
-		if err != nil {
-			writeErr(w, domain.ErrValidation)
-			return
-		}
-		bankAccountID = &id
-	}
-	p, err := s.Payments.Register(r.Context(), payment.RegisterInput{
-		TenantID: tenantID, CustomerID: customerID, BookingID: bookingID, BankAccountID: bankAccountID, BankCode: body.BankCode,
-		Method: domain.PaymentMethod(body.Method), AmountCents: body.AmountCents,
-		Currency: body.Currency, Reference: body.Reference, ReceiptURL: body.ReceiptURL,
-	})
+	p, err := s.Invoices.CreatePerson(r.Context(), body)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -467,197 +133,129 @@ func (s *Server) registerPayment(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, p)
 }
 
-func (s *Server) listPayments(w http.ResponseWriter, r *http.Request) {
+func (s *Server) listProducts(w http.ResponseWriter, r *http.Request) {
 	tenantID, ok := tenantID(w, r)
 	if !ok {
 		return
 	}
-	customerID, err := uuid.Parse(r.URL.Query().Get("customerId"))
-	if err != nil {
-		writeErr(w, domain.ErrValidation)
-		return
-	}
-	items, err := s.Payments.ListByCustomer(r.Context(), tenantID, customerID)
+	list, err := s.Invoices.ListProducts(r.Context(), tenantID, r.URL.Query().Get("q"))
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"payments": items})
+	writeJSON(w, http.StatusOK, list)
 }
 
-func (s *Server) getPayment(w http.ResponseWriter, r *http.Request) {
-	tenantID, paymentID, ok := tenantAndID(w, r, "paymentID")
-	if !ok {
-		return
-	}
-	p, err := s.Payments.Get(r.Context(), tenantID, paymentID)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, p)
-}
-
-func (s *Server) markPaid(w http.ResponseWriter, r *http.Request) {
-	tenantID, paymentID, ok := tenantAndID(w, r, "paymentID")
-	if !ok {
-		return
-	}
-	p, err := s.Payments.MarkPaid(r.Context(), tenantID, paymentID)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, p)
-}
-
-func (s *Server) voidPayment(w http.ResponseWriter, r *http.Request) {
-	tenantID, paymentID, ok := tenantAndID(w, r, "paymentID")
-	if !ok {
-		return
-	}
-	p, err := s.Payments.Void(r.Context(), tenantID, paymentID)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, p)
-}
-
-func (s *Server) listBanks(w http.ResponseWriter, r *http.Request) {
+func (s *Server) createProduct(w http.ResponseWriter, r *http.Request) {
 	tenantID, ok := tenantID(w, r)
 	if !ok {
 		return
 	}
-	items, err := s.Payments.ListBanks(r.Context(), tenantID)
+	var body invoice.CreateProductInput
+	if err := decodeJSON(r, &body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	body.TenantID = tenantID
+	p, err := s.Invoices.CreateProduct(r.Context(), body)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"bankAccounts": items})
+	writeJSON(w, http.StatusCreated, p)
 }
 
-func (s *Server) createBank(w http.ResponseWriter, r *http.Request) {
+func (s *Server) listInvoices(w http.ResponseWriter, r *http.Request) {
 	tenantID, ok := tenantID(w, r)
 	if !ok {
 		return
 	}
-	var account domain.BankAccount
-	if err := decodeJSON(r, &account); err != nil {
+	list, err := s.Invoices.ListDocuments(r.Context(), tenantID, 50)
+	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	account.TenantID = tenantID
-	if err := s.Payments.CreateBank(r.Context(), &account); err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, &account)
+	writeJSON(w, http.StatusOK, list)
 }
 
-func (s *Server) createDesign(w http.ResponseWriter, r *http.Request) {
+func (s *Server) getInvoice(w http.ResponseWriter, r *http.Request) {
+	tenantID, id, ok := tenantAndID(w, r, "invoiceID")
+	if !ok {
+		return
+	}
+	doc, err := s.Invoices.GetDocument(r.Context(), tenantID, id)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, doc)
+}
+
+func (s *Server) createInvoice(w http.ResponseWriter, r *http.Request) {
 	tenantID, ok := tenantID(w, r)
 	if !ok {
 		return
 	}
 	var body struct {
-		CustomerID string `json:"customerId"`
-		Prompt     string `json:"prompt"`
-		PhotoURL   string `json:"photoUrl"`
-		ModelUsed  string `json:"modelUsed"`
+		DocType              string              `json:"docType"`
+		PartyKind            string              `json:"partyKind"`
+		PersonID             *uuid.UUID          `json:"personId"`
+		PersonName           string              `json:"personName"`
+		PersonIdentification string              `json:"personIdentification"`
+		Establishment        string              `json:"establishment"`
+		EmissionPoint        string              `json:"emissionPoint"`
+		IssueDate            string              `json:"issueDate"`
+		DueDays              int                 `json:"dueDays"`
+		Reference            string              `json:"reference"`
+		Seller               string              `json:"seller"`
+		Description          string              `json:"description"`
+		IsExport             bool                `json:"isExport"`
+		SendToSRI            bool                `json:"sendToSri"`
+		CreatedByExternalID  string              `json:"createdByExternalId"`
+		Lines                []invoice.LineInput `json:"lines"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		writeErr(w, err)
 		return
 	}
-	customerID, err := uuid.Parse(body.CustomerID)
-	if err != nil {
-		writeErr(w, domain.ErrValidation)
-		return
+	var issueDate time.Time
+	if body.IssueDate != "" {
+		var err error
+		issueDate, err = time.Parse("2006-01-02", body.IssueDate)
+		if err != nil {
+			issueDate, err = time.Parse("02/01/2006", body.IssueDate)
+			if err != nil {
+				writeErr(w, domain.ErrValidation)
+				return
+			}
+		}
 	}
-	d, err := s.Designs.Create(r.Context(), design.CreateInput{
-		TenantID: tenantID, CustomerID: customerID, Prompt: body.Prompt, PhotoURL: body.PhotoURL, ModelUsed: body.ModelUsed,
+	doc, err := s.Invoices.CreateDocument(r.Context(), invoice.CreateDocumentInput{
+		TenantID: tenantID, DocType: body.DocType, PartyKind: body.PartyKind,
+		PersonID: body.PersonID, PersonName: body.PersonName, PersonIdentification: body.PersonIdentification,
+		Establishment: body.Establishment, EmissionPoint: body.EmissionPoint, IssueDate: issueDate,
+		DueDays: body.DueDays, Reference: body.Reference, Seller: body.Seller, Description: body.Description,
+		IsExport: body.IsExport, SendToSRI: body.SendToSRI, CreatedByExternalID: body.CreatedByExternalID,
+		Lines: body.Lines,
 	})
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, d)
+	writeJSON(w, http.StatusCreated, doc)
 }
 
-func (s *Server) listDesigns(w http.ResponseWriter, r *http.Request) {
-	tenantID, customerID, ok := tenantAndQueryID(w, r, "customerId")
+func (s *Server) sendInvoiceSRI(w http.ResponseWriter, r *http.Request) {
+	tenantID, id, ok := tenantAndID(w, r, "invoiceID")
 	if !ok {
 		return
 	}
-	items, err := s.Designs.List(r.Context(), tenantID, customerID)
+	doc, err := s.Invoices.SendToSRI(r.Context(), tenantID, id)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"designs": items})
-}
-
-func (s *Server) getDesign(w http.ResponseWriter, r *http.Request) {
-	tenantID, id, ok := tenantAndID(w, r, "id")
-	if !ok {
-		return
-	}
-	d, err := s.Designs.Get(r.Context(), tenantID, id)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, d)
-}
-
-func (s *Server) completeDesign(w http.ResponseWriter, r *http.Request) {
-	tenantID, id, ok := tenantAndID(w, r, "id")
-	if !ok {
-		return
-	}
-	var body struct {
-		ResultURL    string `json:"resultUrl"`
-		Failed       bool   `json:"failed"`
-		ErrorMessage string `json:"errorMessage"`
-	}
-	if err := decodeJSON(r, &body); err != nil {
-		writeErr(w, err)
-		return
-	}
-	d, err := s.Designs.Complete(r.Context(), tenantID, id, body.ResultURL, body.Failed, body.ErrorMessage)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, d)
-}
-
-func (s *Server) deleteDesign(w http.ResponseWriter, r *http.Request) {
-	tenantID, id, ok := tenantAndID(w, r, "id")
-	if !ok {
-		return
-	}
-	if err := s.Designs.Delete(r.Context(), tenantID, id); err != nil {
-		writeErr(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (s *Server) designQuota(w http.ResponseWriter, r *http.Request) {
-	tenantID, customerID, ok := tenantAndQueryID(w, r, "customerId")
-	if !ok {
-		return
-	}
-	used, limit, totalUsed, totalMax, err := s.Designs.Quota(r.Context(), tenantID, customerID)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]int{
-		"used": used, "limit": limit, "totalUsed": totalUsed, "totalMax": totalMax,
-	})
+	writeJSON(w, http.StatusOK, doc)
 }
 
 func tenantID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
@@ -675,19 +273,6 @@ func tenantAndID(w http.ResponseWriter, r *http.Request, name string) (uuid.UUID
 		return uuid.Nil, uuid.Nil, false
 	}
 	id, err := uuid.Parse(chi.URLParam(r, name))
-	if err != nil {
-		writeErr(w, domain.ErrValidation)
-		return uuid.Nil, uuid.Nil, false
-	}
-	return tenantID, id, true
-}
-
-func tenantAndQueryID(w http.ResponseWriter, r *http.Request, name string) (uuid.UUID, uuid.UUID, bool) {
-	tenantID, ok := tenantID(w, r)
-	if !ok {
-		return uuid.Nil, uuid.Nil, false
-	}
-	id, err := uuid.Parse(r.URL.Query().Get(name))
 	if err != nil {
 		writeErr(w, domain.ErrValidation)
 		return uuid.Nil, uuid.Nil, false

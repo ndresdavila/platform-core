@@ -14,29 +14,6 @@ type Tenant struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
-type TenantSettings struct {
-	TenantID           uuid.UUID `json:"tenantId"`
-	FeatureDesignAI    bool      `json:"featureDesignAi"`
-	DesignAIDailyLimit int       `json:"designAiDailyLimit"`
-	DesignAIMaxTotal   int       `json:"designAiMaxTotal"`
-}
-
-type Customer struct {
-	ID         uuid.UUID  `json:"id"`
-	TenantID   uuid.UUID  `json:"tenantId"`
-	ExternalID string     `json:"externalId,omitempty"`
-	NationalID *string    `json:"nationalId,omitempty"`
-	Email      string     `json:"email"`
-	Name       string     `json:"name"`
-	FirstName  string     `json:"firstName"`
-	LastName   string     `json:"lastName"`
-	Phone      string     `json:"phone"`
-	Role       string     `json:"role"`
-	Active     bool       `json:"active"`
-	CreatedAt  time.Time  `json:"createdAt"`
-	UpdatedAt  time.Time  `json:"updatedAt"`
-}
-
 type Employee struct {
 	ID         uuid.UUID `json:"id"`
 	TenantID   uuid.UUID `json:"tenantId"`
@@ -50,119 +27,88 @@ type Employee struct {
 	UpdatedAt  time.Time `json:"updatedAt"`
 }
 
-type CatalogService struct {
-	ID          uuid.UUID `json:"id"`
-	TenantID    uuid.UUID `json:"tenantId"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	DurationMin int       `json:"durationMin"`
-	PriceCents  int       `json:"priceCents"`
-	Currency    string    `json:"currency"`
-	Active      bool      `json:"active"`
+// --- Facturación electrónica (Masterview MVP) ---
+
+type Person struct {
+	ID                 uuid.UUID `json:"id"`
+	TenantID           uuid.UUID `json:"tenantId"`
+	Kind               string    `json:"kind"`
+	IdentificationType string    `json:"identificationType"`
+	Identification     string    `json:"identification"`
+	Name               string    `json:"name"`
+	Email              string    `json:"email"`
+	Phone              string    `json:"phone"`
+	Address            string    `json:"address"`
+	Active             bool      `json:"active"`
+	CreatedAt          time.Time `json:"createdAt"`
+	UpdatedAt          time.Time `json:"updatedAt"`
 }
 
-type BookingStatus string
-
-const (
-	BookingPending    BookingStatus = "PENDING"
-	BookingInProgress BookingStatus = "IN_PROGRESS"
-	BookingCompleted  BookingStatus = "COMPLETED"
-	BookingCancelled  BookingStatus = "CANCELLED"
-)
-
-type OperativeStage string
-
-const (
-	StageBooked     OperativeStage = "BOOKEADA"
-	StageInProgress OperativeStage = "EN_PROGRESO"
-	StagePaid       OperativeStage = "PAGADA"
-	StageFinished   OperativeStage = "FINALIZADA"
-	StageCancelled  OperativeStage = "CANCELADA"
-)
-
-type Booking struct {
-	ID             uuid.UUID      `json:"id"`
-	TenantID       uuid.UUID      `json:"tenantId"`
-	CustomerID     uuid.UUID      `json:"customerId"`
-	ServiceID      uuid.UUID      `json:"serviceId"`
-	DesignID       *uuid.UUID     `json:"designId,omitempty"`
-	StartsAt       time.Time      `json:"startsAt"`
-	Status         BookingStatus  `json:"status"`
-	OperativeStage OperativeStage `json:"operativeStage"`
-	Notes          string         `json:"notes"`
-	CreatedAt      time.Time      `json:"createdAt"`
-	UpdatedAt      time.Time      `json:"updatedAt"`
+type Product struct {
+	ID         uuid.UUID `json:"id"`
+	TenantID   uuid.UUID `json:"tenantId"`
+	Code       string    `json:"code"`
+	Name       string    `json:"name"`
+	Unit       string    `json:"unit"`
+	PriceCents int       `json:"priceCents"`
+	IVARate    float64   `json:"ivaRate"`
+	Active     bool      `json:"active"`
+	CreatedAt  time.Time `json:"createdAt"`
 }
 
-type PaymentMethod string
+type ElectronicDocumentStatus string
 
 const (
-	PaymentCash     PaymentMethod = "CASH"
-	PaymentTransfer PaymentMethod = "TRANSFER"
-	PaymentCard     PaymentMethod = "CARD"
+	DocSaved        ElectronicDocumentStatus = "SAVED"
+	DocAuthorized   ElectronicDocumentStatus = "AUTHORIZED"
 )
 
-type PaymentStatus string
-
-const (
-	PaymentPending  PaymentStatus = "PENDING"
-	PaymentReported PaymentStatus = "REPORTED"
-	PaymentPaid     PaymentStatus = "PAID"
-	PaymentVoided   PaymentStatus = "VOIDED"
-)
-
-type Payment struct {
-	ID            uuid.UUID      `json:"id"`
-	TenantID      uuid.UUID      `json:"tenantId"`
-	CustomerID    uuid.UUID      `json:"customerId"`
-	BookingID     *uuid.UUID     `json:"bookingId,omitempty"`
-	BankAccountID *uuid.UUID     `json:"bankAccountId,omitempty"`
-	BankCode      string         `json:"bankCode"`
-	Method        PaymentMethod  `json:"method"`
-	Status        PaymentStatus  `json:"status"`
-	AmountCents   int            `json:"amountCents"`
-	Currency      string         `json:"currency"`
-	Reference     string         `json:"reference"`
-	ReceiptURL    string         `json:"receiptUrl"`
-	AdminNotes    string         `json:"adminNotes"`
-	CreatedAt     time.Time      `json:"createdAt"`
-	UpdatedAt     time.Time      `json:"updatedAt"`
+type ElectronicDocumentLine struct {
+	ID              uuid.UUID  `json:"id"`
+	DocumentID      uuid.UUID  `json:"documentId"`
+	TenantID        uuid.UUID  `json:"tenantId"`
+	LineNo          int        `json:"lineNo"`
+	ProductID       *uuid.UUID `json:"productId,omitempty"`
+	ProductName     string     `json:"productName"`
+	Unit            string     `json:"unit"`
+	Quantity        float64    `json:"quantity"`
+	UnitPriceCents  int        `json:"unitPriceCents"`
+	IVARate         float64    `json:"ivaRate"`
+	DiscountPercent float64    `json:"discountPercent"`
+	DiscountCents   int        `json:"discountCents"`
+	SubtotalCents   int        `json:"subtotalCents"`
 }
 
-type BankAccount struct {
-	ID            uuid.UUID `json:"id"`
-	TenantID      uuid.UUID `json:"tenantId"`
-	BankCode      string    `json:"bankCode"`
-	HolderName    string    `json:"holderName"`
-	AccountNumber string    `json:"accountNumber"`
-	AccountType   string    `json:"accountType"`
-	TaxID         string    `json:"taxId"`
-	NotifyEmail   string    `json:"notifyEmail"`
-	Active        bool      `json:"active"`
-	SortOrder     int       `json:"sortOrder"`
-}
-
-type DesignStatus string
-
-const (
-	DesignPending    DesignStatus = "PENDIENTE"
-	DesignProcessing DesignStatus = "PROCESANDO"
-	DesignReady      DesignStatus = "LISTO"
-	DesignFailed     DesignStatus = "FALLIDO"
-	DesignUsed       DesignStatus = "USADO_EN_CITA"
-)
-
-type Design struct {
-	ID           uuid.UUID    `json:"id"`
-	TenantID     uuid.UUID    `json:"tenantId"`
-	CustomerID   uuid.UUID    `json:"customerId"`
-	Prompt       string       `json:"prompt"`
-	PhotoURL     string       `json:"photoUrl"`
-	ResultURL    string       `json:"resultUrl"`
-	ModelUsed    string       `json:"modelUsed"`
-	Status       DesignStatus `json:"status"`
-	ErrorMessage string       `json:"errorMessage"`
-	CreatedAt    time.Time    `json:"createdAt"`
-	UpdatedAt    time.Time    `json:"updatedAt"`
-	ProcessedAt  *time.Time   `json:"processedAt,omitempty"`
+type ElectronicDocument struct {
+	ID                   uuid.UUID                `json:"id"`
+	TenantID             uuid.UUID                `json:"tenantId"`
+	DocType              string                   `json:"docType"`
+	PartyKind            string                   `json:"partyKind"`
+	PersonID             *uuid.UUID               `json:"personId,omitempty"`
+	PersonName           string                   `json:"personName"`
+	PersonIdentification string                   `json:"personIdentification"`
+	Establishment        string                   `json:"establishment"`
+	EmissionPoint        string                   `json:"emissionPoint"`
+	DocumentNumber       string                   `json:"documentNumber"`
+	AccessKey            string                   `json:"accessKey"`
+	IssueDate            time.Time                `json:"issueDate"`
+	DueDays              int                      `json:"dueDays"`
+	Reference            string                   `json:"reference"`
+	Seller               string                   `json:"seller"`
+	Description          string                   `json:"description"`
+	IsExport             bool                     `json:"isExport"`
+	Status               ElectronicDocumentStatus `json:"status"`
+	SRIMessage           string                   `json:"sriMessage"`
+	Subtotal15Cents      int                      `json:"subtotal15Cents"`
+	Subtotal5Cents       int                      `json:"subtotal5Cents"`
+	Subtotal0Cents       int                      `json:"subtotal0Cents"`
+	DiscountCents        int                      `json:"discountCents"`
+	IVA15Cents           int                      `json:"iva15Cents"`
+	IVA5Cents            int                      `json:"iva5Cents"`
+	ICECents             int                      `json:"iceCents"`
+	TotalCents           int                      `json:"totalCents"`
+	CreatedByExternalID  string                   `json:"createdByExternalId"`
+	CreatedAt            time.Time                `json:"createdAt"`
+	UpdatedAt            time.Time                `json:"updatedAt"`
+	Lines                []ElectronicDocumentLine `json:"lines,omitempty"`
 }

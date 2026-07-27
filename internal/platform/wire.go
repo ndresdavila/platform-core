@@ -7,11 +7,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	httpapi "github.com/ndresdavila/platform-core/internal/adapters/http"
 	"github.com/ndresdavila/platform-core/internal/adapters/postgres"
-	"github.com/ndresdavila/platform-core/internal/application/booking"
-	"github.com/ndresdavila/platform-core/internal/application/catalog"
-	"github.com/ndresdavila/platform-core/internal/application/design"
 	"github.com/ndresdavila/platform-core/internal/application/identity"
-	"github.com/ndresdavila/platform-core/internal/application/payment"
+	"github.com/ndresdavila/platform-core/internal/application/invoice"
 	"github.com/ndresdavila/platform-core/internal/application/tenant"
 )
 
@@ -25,23 +22,16 @@ func (UUIDGen) New() uuid.UUID { return uuid.New() }
 
 func NewHTTPServer(db *pgxpool.Pool) *httpapi.Server {
 	tenants := postgres.NewTenantRepo(db)
-	customers := postgres.NewCustomerRepo(db)
 	employees := postgres.NewEmployeeRepo(db)
-	settings := postgres.NewSettingsRepo(db)
-	catalogRepo := postgres.NewCatalogRepo(db)
-	bookings := postgres.NewBookingRepo(db)
-	payments := postgres.NewPaymentRepo(db)
-	banks := postgres.NewBankAccountRepo(db)
-	designs := postgres.NewDesignRepo(db)
+	persons := postgres.NewPersonRepo(db)
+	products := postgres.NewProductRepo(db)
+	invoices := postgres.NewInvoiceRepo(db)
 	clock := SystemClock{}
 	ids := UUIDGen{}
 
 	return &httpapi.Server{
 		Tenants:  tenant.NewService(tenants, clock, ids),
-		Identity: identity.NewService(tenants, customers, employees, settings, clock, ids),
-		Bookings: booking.NewService(tenants, customers, catalogRepo, bookings, payments, clock, ids),
-		Payments: payment.NewService(tenants, payments, bookings, banks, clock, ids),
-		Catalog:  catalog.NewService(tenants, catalogRepo, ids),
-		Designs:  design.NewService(tenants, designs, settings, clock, ids),
+		Identity: identity.NewService(tenants, employees, clock, ids),
+		Invoices: invoice.NewService(tenants, persons, products, invoices, clock, ids),
 	}
 }
